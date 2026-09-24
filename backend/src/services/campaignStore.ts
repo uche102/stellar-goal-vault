@@ -130,11 +130,28 @@ function toServiceError(message: string, statusCode: number, code = 'BAD_REQUEST
   return error;
 }
 
+let _currentTime: number | null = null;
+
+export function setCurrentTime(time: number): void {
+  _currentTime = time;
+}
+
+export function resetTime(): void {
+  _currentTime = null;
+}
+
 function nowInSeconds(): number {
-  return Math.floor(Date.now() / 1000);
+  return Math.floor(getCurrentTime() / 1000);
 }
 
 function nowInMilliseconds(): number {
+  return getCurrentTime();
+}
+
+function getCurrentTime(): number {
+  if (_currentTime !== null) {
+    return _currentTime;
+  }
   return Date.now();
 }
 
