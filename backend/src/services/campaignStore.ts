@@ -1,8 +1,12 @@
-import type { Statement } from 'better-sqlite3';
 import { getDb, initDb } from './db';
 import { getCampaignHistory, recordEvent, BlockchainMetadata } from './eventHistory';
 import { createNotification } from './notificationService';
 import { dispatchWebhook } from './webhookService';
+
+interface Statement {
+  get(...params: any[]): any;
+  run(...params: any[]): { changes: number };
+}
 
 let getCampaignPledgedAmountStmt: Statement | undefined;
 let addPledgeInsertStmt: Statement | undefined;
@@ -487,6 +491,8 @@ export interface ListCampaignsOptions {
   limit?: number;
   sort?: CampaignSortField;
   sortOrder?: SortOrder;
+  createdAfter?: number;
+  createdBefore?: number;
 }
 
 export interface CampaignDetailOptions {
@@ -553,7 +559,7 @@ const MAX_CAMPAIGN_DURATION_SECONDS = 60 * 60 * 24 * 180;
  * `id` tie-breaker, so consecutive `page`/`limit` requests form stable,
  * non-overlapping chunks even when many campaigns share the same sort value.
  *
- * @param options - Optional filters: `searchQuery`, `assetCode`, `status`, `includeDeleted`, `page`, `limit`, `sort`, `order`.
+ * @param options - Optional filters: `searchQuery`, `assetCode`, `status`, `includeDeleted`, `page`, `limit`, `sort`, `sortOrder`.
  * @returns A {@link ListCampaignsResult} with the matching campaign records, per-campaign active pledge counts, and the total count.
  */
 export function listCampaigns(options?: ListCampaignsOptions): ListCampaignsResult {
@@ -651,7 +657,7 @@ export function listCampaigns(options?: ListCampaignsOptions): ListCampaignsResu
 
   // Build ORDER BY clause from sort options
   const sortField = options?.sort ?? 'createdAt';
-  const sortOrder = options?.order ?? 'desc';
+  const sortOrder = options?.sortOrder ?? 'desc';
   const orderDir = sortOrder === 'asc' ? 'ASC' : 'DESC';
   let primaryOrder: string;
   switch (sortField) {
@@ -1040,7 +1046,7 @@ export function addPledge(campaignId: string, input: PledgeInput): CampaignRecor
     if (!getCampaignPledgedAmountStmt) {
       getCampaignPledgedAmountStmt = db.prepare(`SELECT pledged_amount FROM campaigns WHERE id = ?`);
     }
-    const currentPledgedAmount = getCampaignPledgedAmountStmt.get(campaignId) as { pledged_amount: number };
+    const currentPledgedAmount = getCampaignPledgedAmountStmt!.get(campaignId) as { pledged_amount: number };
     const nextPledgedAmount = round(currentPledgedAmount.pledged_amount + roundedAmount);
     if (nextPledgedAmount > campaign.targetAmount) {
       throw toServiceError(
@@ -1056,12 +1062,12 @@ export function addPledge(campaignId: string, input: PledgeInput): CampaignRecor
          VALUES (?, ?, ?, ?, ?, NULL, NULL)`
       );
     }
-    addPledgeInsertStmt.run(campaignId, input.contributor, roundedAmount, assetCode, createdAt);
+    addPledgeInsertStmt!.run(campaignId, input.contributor, roundedAmount, assetCode, createdAt);
 
     if (!updateCampaignPledgedAmountStmt) {
       updateCampaignPledgedAmountStmt = db.prepare(`UPDATE campaigns SET pledged_amount = pledged_amount + ? WHERE id = ?`);
     }
-    updateCampaignPledgedAmountStmt.run(roundedAmount, campaignId);
+    updateCampaignPledgedAmountStmt!.run(roundedAmount, campaignId);
 
     recordEvent(
       campaignId,
@@ -1189,7 +1195,7 @@ export function reconcileOnChainPledge(
     if (!getCampaignPledgedAmountStmt) {
       getCampaignPledgedAmountStmt = db.prepare(`SELECT pledged_amount FROM campaigns WHERE id = ?`);
     }
-    const currentPledgedAmount = getCampaignPledgedAmountStmt.get(campaignId) as { pledged_amount: number };
+    const currentPledgedAmount = getCampaignPledgedAmountStmt!.get(campaignId) as { pledged_amount: number };
     const nextPledgedAmount = round(currentPledgedAmount.pledged_amount + roundedAmount);
     if (nextPledgedAmount > campaign.targetAmount) {
       throw toServiceError(
@@ -1206,7 +1212,7 @@ export function reconcileOnChainPledge(
         ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`
       );
     }
-    const result = reconcileOnChainPledgeInsertStmt.run(
+    const result = reconcileOnChainPledgeInsertStmt!.run(
       campaignId,
       input.contributor,
       roundedAmount,
@@ -1240,7 +1246,7 @@ export function reconcileOnChainPledge(
     if (!updateCampaignPledgedAmountStmt) {
       updateCampaignPledgedAmountStmt = db.prepare(`UPDATE campaigns SET pledged_amount = pledged_amount + ? WHERE id = ?`);
     }
-    updateCampaignPledgedAmountStmt.run(roundedAmount, campaignId);
+    updateCampaignPledgedAmountStmt!.run(roundedAmount, campaignId);
 
     recordEvent(
       campaignId,
